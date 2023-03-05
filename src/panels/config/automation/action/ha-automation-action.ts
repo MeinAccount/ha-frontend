@@ -191,6 +191,7 @@ export default class HaAutomationAction extends LitElement {
   private async _createSortable() {
     const Sortable = await loadSortable();
     this._sortable = new Sortable(this.shadowRoot!.querySelector(".actions")!, {
+      group: "nested",
       animation: 150,
       fallbackClass: "sortable-fallback",
       handle: ".handle",
@@ -249,14 +250,38 @@ export default class HaAutomationAction extends LitElement {
   }
 
   private _dragged(ev: SortableEvent): void {
-    if (ev.oldIndex === ev.newIndex) return;
-    this._move(ev.oldIndex!, ev.newIndex!);
+    if (ev.to === ev.from) {
+      // move within the same container
+      if (ev.oldIndex === ev.newIndex) return;
+      this._move(ev.oldIndex!, ev.newIndex!);
+    } else {
+      // remove the action, this method is called on the source
+      const actions = this.actions.concat();
+      const action = actions.splice(ev.oldIndex!, 1)[0];
+      fireEvent(this, "value-changed", { value: actions });
+
+      // this change event is added to the microtask queue
+      // the event listener will create further change events bubbeling up the action removal
+      // we can only insert the action when this process is complete (or only the insert will persist)
+      // hence queue a *task* for the insertion
+      setTimeout(() => {
+        // now insert the action
+        const target: HaAutomationAction = ev.to.getRootNode().host;
+        target._insertAction(ev.newIndex!, action);
+      }, 0);
+    }
   }
 
   private _move(index: number, newIndex: number) {
     const actions = this.actions.concat();
     const action = actions.splice(index, 1)[0];
     actions.splice(newIndex, 0, action);
+    fireEvent(this, "value-changed", { value: actions });
+  }
+
+  private _insertAction(index: number, action: Action) {
+    const actions = this.actions.concat();
+    actions.splice(index, 0, action);
     fireEvent(this, "value-changed", { value: actions });
   }
 
